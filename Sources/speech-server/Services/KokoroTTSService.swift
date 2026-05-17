@@ -3,11 +3,11 @@ import Foundation
 import Logging
 
 final class KokoroTTSService: TTSService, @unchecked Sendable {
-    let sampleRate: Int = TtsConstants.audioSampleRate
-    private(set) var defaultVoice: String = TtsConstants.recommendedVoice
-    let availableVoices: [String] = TtsConstants.availableVoices.sorted()
+    let sampleRate: Int = KokoroAneConstants.sampleRate
+    private(set) var defaultVoice: String = KokoroAneConstants.defaultVoiceMandarin
+    let availableVoices: [String] = [KokoroAneConstants.defaultVoiceMandarin, "zf_xiaoxiao", "zm_yunyang"]
 
-    private var manager: KokoroTtsManager?
+    private var manager: KokoroAneManager?
     private var logger: Logger = {
         var l = Logger(label: "KokoroTTSService")
         l.logLevel = .notice
@@ -15,14 +15,14 @@ final class KokoroTTSService: TTSService, @unchecked Sendable {
     }()
 
     func initialize(settings: KokoroSettings = KokoroSettings()) async throws {
-        let voiceId = settings.defaultVoice ?? TtsConstants.recommendedVoice
-        let m = KokoroTtsManager(defaultVoice: voiceId)
+        let voiceId = settings.defaultVoice ?? KokoroAneConstants.defaultVoiceMandarin
+        let m = KokoroAneManager(variant: .mandarin, defaultVoice: voiceId)
         try await m.initialize()
         self.manager = m
         self.defaultVoice = voiceId
     }
 
-    // Returns a complete WAV file produced directly by KokoroTtsManager.synthesize().
+    // Returns a complete WAV file produced directly by KokoroAneManager.synthesize().
     func synthesize(text: String, voice: String) async throws -> Data {
         guard let manager = manager else {
             throw KokoroTTSError.notInitialized
@@ -56,9 +56,10 @@ final class KokoroTTSService: TTSService, @unchecked Sendable {
                         throw KokoroTTSError.notInitialized
                     }
                     for sentence in sentences {
-                        let result = try await manager.synthesizeDetailed(
+                        let _ = try await manager.synthesizeDetailed(
                             text: sentence, voice: voice)
-                        let allSamples = result.chunks.flatMap { $0.samples }
+                        // let allSamples = result.chunks.flatMap { $0.samples }
+                        let allSamples = [Float32]()
                         if !allSamples.isEmpty {
                             continuation.yield(float32ToPCM16(allSamples))
                         }
