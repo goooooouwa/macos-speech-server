@@ -40,33 +40,57 @@ struct SpeechController: RouteCollection {
 
         let input = speechReq.input
         let allocator = req.byteBufferAllocator
-        let sampleRate = ttsService.sampleRate
+        let _ = ttsService.sampleRate
 
         let response = Response(status: .ok)
 
         if format == "wav" {
             response.headers.contentType = HTTPMediaType(type: "audio", subType: "wav")
-            let header = Self.streamingWAVHeader(sampleRate: sampleRate)
+            // let header = Self.streamingWAVHeader(sampleRate: sampleRate)
+            // response.body = .init(
+            //     asyncStream: { writer in
+            //         do {
+            //             var hBuf = allocator.buffer(capacity: header.count)
+            //             hBuf.writeBytes(header)
+            //             try await writer.writeBuffer(hBuf)
+
+            //             for try await chunk in ttsService.synthesizeStream(
+            //                 text: input, voice: voice)
+            //             {
+            //                 var buf = allocator.buffer(capacity: chunk.count)
+            //                 buf.writeBytes(chunk)
+            //                 try await writer.writeBuffer(buf)
+            //             }
+            //             try await writer.write(.end)
+            //         }
+            //         catch {
+            //             try? await writer.write(.error(error))
+            //         }
+            //     }, count: -1, byteBufferAllocator: allocator)
             response.body = .init(
                 asyncStream: { writer in
                     do {
-                        var hBuf = allocator.buffer(capacity: header.count)
-                        hBuf.writeBytes(header)
-                        try await writer.writeBuffer(hBuf)
+                        // 1. 直接调用全量合成方法，等待整段音频生成完毕
+                        let fullWavData = try await ttsService.synthesize(text: input, voice: voice)
 
-                        for try await chunk in ttsService.synthesizeStream(
-                            text: input, voice: voice)
-                        {
-                            var buf = allocator.buffer(capacity: chunk.count)
-                            buf.writeBytes(chunk)
-                            try await writer.writeBuffer(buf)
-                        }
+                        // 2. 根据全量数据的实际大小（fullWavData.count）一次性分配网络缓冲区
+                        var buf = allocator.buffer(capacity: fullWavData.count)
+                        buf.writeBytes(fullWavData)
+
+                        // 3. 将包含 WAV 头的完整音频数据一次性发送给客户端
+                        try await writer.writeBuffer(buf)
+
+                        // 4. 显式通知客户端传输结束
                         try await writer.write(.end)
                     }
                     catch {
+                        // 5. 异常处理保持不变
                         try? await writer.write(.error(error))
                     }
-                }, count: -1, byteBufferAllocator: allocator)
+                },
+                count: -1,  // 注意：这里依然可以保持 -1，或者如果你能提前拿到 count，可以改为 fullWavData.count 的逻辑。但在此闭包外拿不到，保持 -1 即可。
+                byteBufferAllocator: allocator
+            )
         }
         else {
             response.headers.contentType = HTTPMediaType(type: "audio", subType: "pcm")
