@@ -1,0 +1,24 @@
+{
+  "configurations": [
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:macos-speech-server}",
+      "name": "Debug speech-server",
+      "target": "speech-server",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug speech-server"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:macos-speech-server}",
+      "name": "Release speech-server",
+      "target": "speech-server",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release speech-server"
+    }
+  ]
+}

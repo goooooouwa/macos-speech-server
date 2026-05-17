@@ -333,7 +333,7 @@ actor WyomingSession {
             "attribution": asrAttribution,
             "installed": .bool(true),
             "version": .string("1.0.0"),
-            "languages": .array([.string("en")]),
+            "languages": .array([.string("en"), .string("zh-cn")]),
         ])
 
         let asrProgram = WyomingValue.object([
@@ -358,7 +358,7 @@ actor WyomingSession {
                 "attribution": serverAttribution,
                 "installed": .bool(true),
                 "version": .string("1.0.0"),
-                "languages": .array([.string("en")]),
+                "languages": .array([.string("en"), .string("zh-cn")]),
             ])
         }
 
