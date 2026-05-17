@@ -191,6 +191,60 @@ actor WyomingSession {
         state = .recording(writer: writer, rate: rate, width: width, channels: channels)
     }
 
+    // /// Synthesize `text` as a single unit (non-streaming path), yielding audio-start / chunk(s) / audio-stop.
+    // private func streamSynthesize(text: String, voice: String, continuation: AsyncStream<Data>.Continuation) async {
+    //     guard !text.isEmpty else {
+    //         logger.warning("synthesize event missing text")
+    //         return
+    //     }
+
+    //     let rate = ttsService.sampleRate
+    //     let width = 2
+    //     let channels = 1
+    //     var chunkCount = 0
+
+    //     do {
+    //         // Delay audio-start until the first chunk arrives so that a completely
+    //         // failed or empty synthesis sends no audio events at all.
+    //         for try await chunk in ttsService.synthesizeStream(text: text, voice: voice) {
+    //             if chunkCount == 0 {
+    //                 let audioStart = WyomingEvent(
+    //                     type: "audio-start",
+    //                     data: [
+    //                         "rate": .int(rate),
+    //                         "width": .int(width),
+    //                         "channels": .int(channels),
+    //                     ]
+    //                 )
+    //                 continuation.yield(audioStart.serialize())
+    //             }
+    //             let audioChunk = WyomingEvent(
+    //                 type: "audio-chunk",
+    //                 data: [
+    //                     "rate": .int(rate),
+    //                     "width": .int(width),
+    //                     "channels": .int(channels),
+    //                 ],
+    //                 payload: chunk
+    //             )
+    //             continuation.yield(audioChunk.serialize())
+    //             chunkCount += 1
+    //         }
+
+    //         if chunkCount > 0 {
+    //             continuation.yield(WyomingEvent(type: "audio-stop").serialize())
+    //         }
+    //         logger.notice("Wyoming: synthesize complete, \(chunkCount) chunk(s)")
+    //     }
+    //     catch {
+    //         logger.error("TTS error during synthesize: \(error)")
+    //         // If synthesis failed mid-stream, close the open audio sequence.
+    //         if chunkCount > 0 {
+    //             continuation.yield(WyomingEvent(type: "audio-stop").serialize())
+    //         }
+    //     }
+    // }
+
     /// Synthesize `text` as a single unit (non-streaming path), yielding audio-start / chunk(s) / audio-stop.
     private func streamSynthesize(text: String, voice: String, continuation: AsyncStream<Data>.Continuation) async {
         guard !text.isEmpty else {
@@ -201,50 +255,75 @@ actor WyomingSession {
         let rate = ttsService.sampleRate
         let width = 2
         let channels = 1
-        var chunkCount = 0
 
         do {
-            // Delay audio-start until the first chunk arrives so that a completely
-            // failed or empty synthesis sends no audio events at all.
-            for try await chunk in ttsService.synthesizeStream(text: text, voice: voice) {
-                if chunkCount == 0 {
-                    let audioStart = WyomingEvent(
-                        type: "audio-start",
-                        data: [
-                            "rate": .int(rate),
-                            "width": .int(width),
-                            "channels": .int(channels),
-                        ]
-                    )
-                    continuation.yield(audioStart.serialize())
-                }
-                let audioChunk = WyomingEvent(
-                    type: "audio-chunk",
-                    data: [
-                        "rate": .int(rate),
-                        "width": .int(width),
-                        "channels": .int(channels),
-                    ],
-                    payload: chunk
-                )
-                continuation.yield(audioChunk.serialize())
-                chunkCount += 1
+            // 1. 一次性等待全量音频数据合成完毕
+            let fullWavData = try await ttsService.synthesize(text: text, voice: voice)
+
+            // WAV 标准头部通常是 44 字节，我们需要跳过它以获取纯 PCM 数据
+            let wavHeaderLength = 44
+            guard fullWavData.count > wavHeaderLength else {
+                logger.warning("Synthesized data is too small or empty")
+                return
             }
 
-            if chunkCount > 0 {
-                continuation.yield(WyomingEvent(type: "audio-stop").serialize())
+            // 2. 截取 44 字节之后的纯 PCM 数据
+            let pcmData = fullWavData.subdata(in: wavHeaderLength..<fullWavData.count)
+
+            // 3. 发送 audio-start 事件，通知客户端音频流开始
+            let audioStart = WyomingEvent(
+                type: "audio-start",
+                data: [
+                    "rate": .int(rate),
+                    "width": .int(width),
+                    "channels": .int(channels),
+                ]
+            )
+            continuation.yield(audioStart.serialize())
+
+            // 4. 发送音频数据
+            // 做法 A：直接把整个 PCM 作为一个大 chunk 一次性发掉
+            let audioChunk = WyomingEvent(
+                type: "audio-chunk",
+                data: [
+                    "rate": .int(rate),
+                    "width": .int(width),
+                    "channels": .int(channels),
+                ],
+                payload: pcmData
+            )
+            continuation.yield(audioChunk.serialize())
+
+            /*
+            // 做法 B (可选备用)：如果 Wyoming 客户端对单包大小有限制（比如不能超过 16KB），
+            // 你也可以在内存中把 pcmData 手动切成固定大小的小块循环发送：
+            let chunkSize = 4096 // 4KB
+            var offset = 0
+            while offset < pcmData.count {
+                let nextOffset = min(offset + chunkSize, pcmData.count)
+                let subChunk = pcmData.subdata(in: offset..<nextOffset)
+                let audioChunk = WyomingEvent(
+                    type: "audio-chunk",
+                    data: ["rate": .int(rate), "width": .int(width), "channels": .int(channels)],
+                    payload: subChunk
+                )
+                continuation.yield(audioChunk.serialize())
+                offset = nextOffset
             }
-            logger.notice("Wyoming: synthesize complete, \(chunkCount) chunk(s)")
+            */
+
+            // 5. 发送 audio-stop 事件，通知客户端结束
+            continuation.yield(WyomingEvent(type: "audio-stop").serialize())
+            logger.notice("Wyoming: non-streaming synthesize complete, total bytes: \(pcmData.count)")
         }
         catch {
-            logger.error("TTS error during synthesize: \(error)")
-            // If synthesis failed mid-stream, close the open audio sequence.
-            if chunkCount > 0 {
-                continuation.yield(WyomingEvent(type: "audio-stop").serialize())
-            }
+            logger.error("TTS error during non-streaming synthesize: \(error)")
+            // 注意：因为这里是全量获取，如果 ttsService.synthesize 抛出异常，
+            // 说明在此之前没有发送过任何 audio-start，因此不需要像原代码那样在这里补发 audio-stop。
         }
     }
 
+    
     /// Synthesize each sentence in `sentences` individually, yielding one complete
     /// audio-start / audio-chunk(s) / audio-stop sequence per sentence.
     ///
@@ -369,7 +448,7 @@ actor WyomingSession {
             "installed": .bool(true),
             "version": .string("1.0.0"),
             "voices": .array(ttsVoices),
-            "supports_synthesize_streaming": .bool(true),
+            "supports_synthesize_streaming": .bool(false),
         ])
 
         return WyomingEvent(
