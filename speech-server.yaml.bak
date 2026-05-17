@@ -26,7 +26,7 @@ stt:
                         # v2 = Parakeet TDT 0.6B v2, English-only (higher recall)
 
 tts:
-  engine: avspeech         # Text-to-speech engine: pocket_tts | avspeech | kokoro
+  engine: kokoro         # Text-to-speech engine: pocket_tts | avspeech | kokoro
 
   # PocketTTS settings (only used when engine: pocket_tts)
   pocket_tts:
@@ -40,5 +40,5 @@ tts:
 
   # Kokoro TTS settings (only used when engine: kokoro)
   # Uses FluidAudio's Kokoro model — 50 voices across 8 languages, 24 kHz, high quality.
-  #kokoro:
-  #  default_voice: zm_yunyang      # Any Kokoro voice ID (e.g. af_heart, am_adam); default af_heart
+  kokoro:
+    default_voice: zf_001      # Any Kokoro voice ID (e.g. af_heart, am_adam); default af_heart
