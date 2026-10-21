@@ -3,13 +3,16 @@
 This is a fork of macos-speech-server to support Chinese STT & TTS with Chinese voices (zf_001, zf_xiaoxiao, zm_yunyang).
 
 The service is run as a User-space agent (starts on login) with the following command:
+
 ./deploy/install-agent.sh
+
 # This installs:
 #   - ~/Library/LaunchAgents/com.local.speech-server.plist
 #   - Binary to ~/bin/speech-server
 #   - Config at ./speech-server.yaml
 
 To stop the agent:
+
 ./deploy/uninstall-agent.sh
 
 # macos-speech-server
