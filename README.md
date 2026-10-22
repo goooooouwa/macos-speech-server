@@ -10,6 +10,9 @@ The service is installed as a User-space agent (starts on login) in the followin
 Useful agent commands:
 
 ```bash
+# Check if the agent is running
+launchctl print gui/$(id -u)/com.local.speech-server | grep -E "state|pid"
+
 # Restart agent after config changes
 launchctl kickstart -k gui/$(id -u)/com.local.speech-server
 
